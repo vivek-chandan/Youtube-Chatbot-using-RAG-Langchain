@@ -18,6 +18,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import PromptTemplate
+from langchain_core.documents import Document
 
 """## Step 1a - Indexing (Document Ingestion)"""
 
@@ -47,7 +48,19 @@ try:
         for t in transcript_data
     ]
 
-    # 2. Create the flattened string
+    # 2. Create timestamped documents so downstream chunks preserve source times
+    transcript_documents = [
+        Document(
+            page_content=t.text,
+            metadata={
+                "start": t.start,
+                "duration": t.duration,
+            },
+        )
+        for t in transcript_data
+    ]
+
+    # 3. Create the flattened string for quick inspection
     transcript_text = " ".join([t.text for t in transcript_data])
 
     # Print the result to verify
@@ -65,8 +78,31 @@ transcript = formatted_transcript
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-# Using transcript_text which is the string version of the transcript
-chunks = splitter.create_documents([transcript_text])
+
+
+def format_timestamp(seconds):
+    total_seconds = int(seconds)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    remaining_seconds = total_seconds % 60
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{remaining_seconds:02d}"
+    return f"{minutes:02d}:{remaining_seconds:02d}"
+
+
+chunks = splitter.split_documents(transcript_documents)
+
+
+def format_retrieved_context(retrieved_docs):
+    context_lines = []
+    for doc in retrieved_docs:
+        start = doc.metadata.get("start", 0)
+        duration = doc.metadata.get("duration", 0)
+        end = start + duration
+        context_lines.append(
+            f"[source: {format_timestamp(start)}-{format_timestamp(end)}] {doc.page_content}"
+        )
+    return "\n\n".join(context_lines)
 
 len(chunks)
 
@@ -98,6 +134,7 @@ prompt = PromptTemplate(
       You are a helpful assistant.
       Answer ONLY from the provided transcript context.
       If the context is insufficient, just say you don't know.
+            When you answer, include the source timestamp(s) from the transcript in parentheses, like (source: 00:12-00:18).
 
       {context}
       Question: {question}
@@ -110,7 +147,7 @@ retrieved_docs    = retriever.invoke(question)
 
 retrieved_docs
 
-context_text = "\n\n".join(doc.page_content for doc in retrieved_docs)
+context_text = format_retrieved_context(retrieved_docs)
 context_text
 
 final_prompt = prompt.invoke({"context": context_text, "question": question})
@@ -127,12 +164,8 @@ print(answer.content)
 from langchain_core.runnables import RunnableParallel, RunnablePassthrough, RunnableLambda
 from langchain_core.output_parsers import StrOutputParser
 
-def format_docs(retrieved_docs):
-  context_text = "\n\n".join(doc.page_content for doc in retrieved_docs)
-  return context_text
-
 parallel_chain = RunnableParallel({
-    'context': retriever | RunnableLambda(format_docs),
+    'context': retriever | RunnableLambda(format_retrieved_context),
     'question': RunnablePassthrough()
 })
 
