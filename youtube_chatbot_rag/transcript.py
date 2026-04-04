@@ -62,22 +62,49 @@ def fetch_transcripts(video_ids: list[str]) -> tuple[dict[str, list[TranscriptSe
     return transcripts, failed_video_errors
 
 
-def transcript_to_documents(segments: list[TranscriptSegment]) -> list[Document]:
-    """Convert transcript segments into LangChain documents with timestamp metadata."""
-    return [
-        Document(
-            page_content=segment.text,
-            metadata={"start": segment.start, "duration": segment.duration, "video_id": segment.video_id},
-        )
-        for segment in segments
-    ]
+# def transcript_to_documents(segments: list[TranscriptSegment]) -> list[Document]:
+#     """Convert transcript segments into LangChain documents with timestamp metadata."""
+#     return [
+#         Document(
+#             page_content=segment.text,
+#             metadata={"start": segment.start, "duration": segment.duration, "video_id": segment.video_id},
+#         )
+#         for segment in segments
+#     ]
 
 
-def transcripts_to_documents(transcripts: dict[str, list[TranscriptSegment]]) -> list[Document]:
-    """Flatten multiple transcripts into a single document list."""
-    documents: list[Document] = []
-    for segments in transcripts.values():
-        documents.extend(transcript_to_documents(segments))
+def transcripts_to_documents(transcripts):
+    documents = []
+    for video_id, segments in transcripts.items():
+        paragraph_text = ""
+        start_time = None
+        
+        for segment in segments:
+            if start_time is None:
+                start_time = segment.start
+                
+            paragraph_text += (segment.text + " ")
+            
+            # Create a paragraph if we hit punctuation after a reasonable length, or if it gets too long (fallback for missing punctuation)
+            if (len(paragraph_text) > 500 and paragraph_text.strip().endswith((".", "?", "!"))) or len(paragraph_text) > 1000:
+                duration = (segment.start + segment.duration) - start_time
+                documents.append(
+                    Document(
+                        page_content=paragraph_text.strip(),
+                        metadata={"video_id": video_id, "start": start_time, "duration": duration}
+                    )
+                )
+                paragraph_text = ""
+                start_time = None
+                
+        if paragraph_text.strip():
+            duration = (segments[-1].start + segments[-1].duration) - start_time if start_time is not None else 0
+            documents.append(
+                Document(
+                    page_content=paragraph_text.strip(),
+                    metadata={"video_id": video_id, "start": start_time, "duration": duration}
+                )
+            )
     return documents
 
 

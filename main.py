@@ -5,6 +5,12 @@ from __future__ import annotations
 import argparse
 import sys
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(override=True)
+except ImportError:
+    pass
+
 from youtube_chatbot_rag.app import run_demo, run_interactive_chat
 
 

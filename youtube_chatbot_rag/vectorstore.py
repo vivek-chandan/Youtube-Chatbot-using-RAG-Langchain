@@ -9,17 +9,21 @@ from pathlib import Path
 from langchain_community.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_huggingface import HuggingFaceEndpointEmbeddings
 
 from .config import DEFAULT_CHUNK_OVERLAP, DEFAULT_CHUNK_SIZE, DEFAULT_EMBEDDING_MODEL
 
 
 def split_documents(documents, chunk_size: int = DEFAULT_CHUNK_SIZE, chunk_overlap: int = DEFAULT_CHUNK_OVERLAP):
-    splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap,  separators=["\n\n", "\n", ".", " ", ""])
     return splitter.split_documents(documents)
 
 
 def build_vector_store(documents, embedding_model: str = DEFAULT_EMBEDDING_MODEL) -> FAISS:
-    embeddings = OpenAIEmbeddings(model=embedding_model)
+    embeddings = HuggingFaceEndpointEmbeddings(
+        model="sentence-transformers/all-MiniLM-L6-v2",
+        task="feature-extraction"
+    )
     return FAISS.from_documents(documents, embeddings)
 
 
@@ -61,7 +65,11 @@ def save_vector_store(vector_store: FAISS, corpus_key: str, index_dir: str) -> P
 
 def load_vector_store(corpus_key: str, index_dir: str, embedding_model: str = DEFAULT_EMBEDDING_MODEL) -> FAISS:
     store_path = get_vector_store_path(corpus_key, index_dir)
-    embeddings = OpenAIEmbeddings(model=embedding_model)
+ #   embeddings = OpenAIEmbeddings(model=embedding_model)
+    embeddings = HuggingFaceEndpointEmbeddings(
+        model="sentence-transformers/all-MiniLM-L6-v2",
+        task="feature-extraction"
+    )
     return FAISS.load_local(
         str(store_path),
         embeddings,
